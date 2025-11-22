@@ -13,23 +13,23 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// Allow dashboards / masters from other origins (cluster UI etc.)
+// Allow dashboards / masters (cluster UI etc.) to call the worker API
 app.use(cors());
 app.use(express.json());
 
-// Optional: serve static assets from ./public if you want per-worker pages
+// Optional: serve static assets from ./public if you ever use it
 app.use(express.static(path.join(__dirname, "public")));
 
-// Scheduler: controls queued/running jobs, no metrics involved here
+// Scheduler: manages queued/running jobs & concurrency
 const scheduler = new Scheduler(jobStore, {
   maxConcurrentJobs: config.maxConcurrentJobs
 });
 scheduler.start();
 
-// Register HTTP routes (/info, /health, /jobs, etc.)
-registerRoutes(app, jobStore, scheduler);
+// 🔴 THIS WAS WRONG BEFORE – FIXED NOW 🔴
+// `registerRoutes` expects a deps object: { jobStore, config }
+registerRoutes(app, { jobStore, config });
 
-// Start HTTP server
 app.listen(config.port, () => {
   console.log(
     `[worker] Listening on port ${config.port} (worker_id=${config.workerId})`
