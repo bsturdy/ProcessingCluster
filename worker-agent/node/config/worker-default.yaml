@@ -1,0 +1,7 @@
+worker_id: "macworker001"
+port: 9000
+max_concurrent_jobs: 8
+labels:
+  - "macmini2012"
+  - "i7-3615QM"
+  - "ubuntu"

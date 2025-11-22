@@ -1,21 +1,21 @@
 {
   "protocol_version": 1,
-  "job_id": "test-job-1",
+  "job_id": "test-alpine-1",
   "task": {
-    "type": "compile_and_run_cpp",
+    "type": "debug_echo",
     "payload": {
-      "source_code": "int main(){ return 0; }"
+      "message": "Hello from ProcessorCluster!"
     }
   },
   "runtime": {
     "mode": "image",
-    "image": "dynamic-cpp-runner:1.0.0",
+    "image": "alpine:latest",
     "env": {
-      "TIMEOUT_SECONDS": "3"
+      "EXAMPLE_ENV": "test123"
     },
     "limits": {
-      "memory_mb": 512,
-      "max_runtime_seconds": 5
+      "memory_mb": 256,
+      "max_runtime_seconds": 10
     }
   }
 }

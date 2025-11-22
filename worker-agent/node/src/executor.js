@@ -24,6 +24,7 @@ export function executeJob(jobRecord) {
   const image = runtime.image;
   const envVars = runtime.env || {};
   const limits = runtime.limits || {};
+  const cmd = Array.isArray(runtime.cmd) ? runtime.cmd : [];
 
   if (!image || typeof image !== "string") {
     return Promise.resolve({
@@ -38,7 +39,8 @@ export function executeJob(jobRecord) {
   const timeoutMs = timeoutSeconds * 1000;
   const memoryMb = limits.memory_mb ? Number(limits.memory_mb) : null;
 
-  const dockerArgs = buildDockerArgs(image, envVars, memoryMb);
+  const dockerArgs = buildDockerArgs(image, envVars, memoryMb, cmd);
+
 
   // The payload we send to the container's stdin.
   // v1: full job JSON, so images can decide what they need.
@@ -55,7 +57,7 @@ export function executeJob(jobRecord) {
  * @param {number | null} memoryMb
  * @returns {string[]} args for `docker` (without the "docker" executable itself)
  */
-function buildDockerArgs(image, envVars, memoryMb) {
+function buildDockerArgs(image, envVars, memoryMb, cmd) {
   const args = ["run", "--rm", "-i"];
 
   // Memory limit, if provided
@@ -72,6 +74,12 @@ function buildDockerArgs(image, envVars, memoryMb) {
 
   // Image name
   args.push(image);
+
+  if (Array.isArray(cmd) && cmd.length > 0) {
+    for (const part of cmd) {
+      args.push(String(part));
+    }
+  }
 
   // NOTE: No command override here; we assume the image's default CMD
   // knows how to read JSON from stdin.
