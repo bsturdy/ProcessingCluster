@@ -27,6 +27,9 @@ fi
 echo "[setup] Using worker_id=${WORKER_ID}"
 echo "[setup] Using base directory ${BASE_DIR}"
 
+CURRENT_USER="$(whoami)"
+echo "[setup] Running as user ${CURRENT_USER}"
+
 ### 1. Update apt and install dependencies #####################################
 
 echo "[setup] Updating apt and installing dependencies (git, curl, nodejs, npm, docker.io)..."
@@ -36,7 +39,6 @@ sudo apt install -y git curl nodejs npm docker.io
 
 ### 2. Ensure current user is in docker group ##################################
 
-CURRENT_USER="$(whoami)"
 if ! groups "${CURRENT_USER}" | grep -q '\bdocker\b'; then
   echo "[setup] Adding user '${CURRENT_USER}' to 'docker' group (you must log out and back in after this)."
   sudo usermod -aG docker "${CURRENT_USER}"
@@ -80,17 +82,8 @@ if [[ ! -f "package.json" ]]; then
 }
 EOF
 else
-  echo "[setup] package.json already exists; ensuring type=module and dependencies..."
-
-  # Add "type": "module" if missing
-  if ! grep -q '"type"' package.json; then
-    tmpfile="$(mktemp)"
-    jq '. + { "type": "module" }' package.json > "$tmpfile" && mv "$tmpfile" package.json || echo "[setup] Warning: could not add type=module automatically (jq missing?)"
-  else
-    echo "[setup] 'type' already defined in package.json (check it is \"module\")."
-  fi
-
-  # We still run npm install below which will install missing deps.
+  echo "[setup] package.json already exists."
+  echo "[setup] Please ensure it contains \"type\": \"module\" at the top level."
 fi
 
 ### 6. Install node dependencies ##############################################
@@ -119,23 +112,63 @@ else
   echo "[setup] ${CONFIG_FILE} already exists; not overwriting."
 fi
 
-### 8. Summary #################################################################
+### 8. Create systemd service for autostart ###################################
+
+SERVICE_NAME="processor-worker-${WORKER_ID}.service"
+SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
+
+echo "[setup] Creating systemd service ${SERVICE_NAME}..."
+
+SERVICE_CONTENT="[Unit]
+Description=ProcessorCluster Worker (${WORKER_ID})
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+User=${CURRENT_USER}
+WorkingDirectory=${WORKER_NODE_DIR}
+ExecStart=/usr/bin/node src/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+"
+
+echo "${SERVICE_CONTENT}" | sudo tee "${SERVICE_PATH}" > /dev/null
+
+echo "[setup] Reloading systemd daemon..."
+sudo systemctl daemon-reload
+
+echo "[setup] Enabling service ${SERVICE_NAME} to start on boot..."
+sudo systemctl enable "${SERVICE_NAME}"
+
+echo "[setup] Starting service ${SERVICE_NAME} now..."
+sudo systemctl restart "${SERVICE_NAME}" || sudo systemctl start "${SERVICE_NAME}"
+
+### 9. Summary #################################################################
 
 echo
 echo "[setup] Worker setup complete."
 echo "[setup] Repo directory: ${BASE_DIR}"
 echo "[setup] Worker node directory: ${WORKER_NODE_DIR}"
 echo "[setup] Config file: ${CONFIG_FILE}"
+echo "[setup] Systemd service: ${SERVICE_PATH}"
 echo
 echo "[setup] IMPORTANT:"
 echo "  - If this is the first time you were added to the 'docker' group,"
-echo "    you must log out and log back in (or reboot) before Docker commands work without sudo."
+echo "    you must log out and log back in (or reboot) before Docker works for you interactively."
+echo "  - The service runs as user '${CURRENT_USER}'."
 echo
-echo "[setup] To start the worker manually, run:"
-echo "  cd \"${WORKER_NODE_DIR}\""
-echo "  node src/index.js"
+echo "[setup] To check the worker status:"
+echo "  sudo systemctl status ${SERVICE_NAME}"
 echo
-echo "[setup] You can test it from another machine with:"
+echo "[setup] To see logs:"
+echo "  journalctl -u ${SERVICE_NAME} -f"
+echo
+echo "[setup] From another machine, you can test:"
 echo "  curl http://<THIS_MACHINE_IP>:${WORKER_PORT}/info"
 echo "  curl http://<THIS_MACHINE_IP>:${WORKER_PORT}/health"
 echo
