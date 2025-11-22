@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Git repo URL for your ProcessorCluster project
+# Git repo URL for ProcessorCluster project
 GIT_REPO_URL="https://github.com/bsturdy/ProcessingCluster.git"
 
 # Directory to clone into (or update if it already exists)
@@ -77,7 +77,8 @@ if [[ ! -f "package.json" ]]; then
   "type": "module",
   "dependencies": {
     "express": "^4.21.2",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "cors": "^2.8.5"
   }
 }
 EOF
@@ -90,6 +91,10 @@ fi
 
 echo "[setup] Running npm install..."
 npm install
+
+# Ensure cors is present even if package.json pre-existed
+echo "[setup] Ensuring 'cors' dependency is installed..."
+npm install cors --save
 
 ### 7. Create config/worker-default.yaml if missing ###########################
 
@@ -171,4 +176,3 @@ echo
 echo "[setup] From another machine, you can test:"
 echo "  curl http://<THIS_MACHINE_IP>:${WORKER_PORT}/info"
 echo "  curl http://<THIS_MACHINE_IP>:${WORKER_PORT}/health"
-echo
