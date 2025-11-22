@@ -40,25 +40,26 @@ sudo apt install -y git curl nodejs npm docker.io
 ### 2. Ensure current user is in docker group ##################################
 
 if ! groups "${CURRENT_USER}" | grep -q '\bdocker\b'; then
-  echo "[setup] Adding user '${CURRENT_USER}' to 'docker' group (you must log out and back in after this)."
+  echo "[setup] Adding user '${CURRENT_USER}' to 'docker' group (you must log out and log back in after this)."
   sudo usermod -aG docker "${CURRENT_USER}"
 else
   echo "[setup] User '${CURRENT_USER}' is already in docker group."
 fi
 
-### 3. Clone or update the repo ###############################################
+### 3. Clean old project directory (full reset) ################################
 
-if [[ -d "${BASE_DIR}/.git" ]]; then
-  echo "[setup] Repo already exists at ${BASE_DIR}, pulling latest..."
-  cd "${BASE_DIR}"
-  git pull --ff-only || echo "[setup] git pull failed; check manually."
-else
-  echo "[setup] Cloning repo into ${BASE_DIR}..."
-  git clone "${GIT_REPO_URL}" "${BASE_DIR}"
-  cd "${BASE_DIR}"
+if [[ -d "${BASE_DIR}" ]]; then
+  echo "[setup] Removing existing project directory ${BASE_DIR} for a clean install..."
+  rm -rf "${BASE_DIR}"
 fi
 
-### 4. Go to worker-agent/node #################################################
+### 4. Clone the repo ##########################################################
+
+echo "[setup] Cloning repo into ${BASE_DIR}..."
+git clone "${GIT_REPO_URL}" "${BASE_DIR}"
+cd "${BASE_DIR}"
+
+### 5. Go to worker-agent/node #################################################
 
 WORKER_NODE_DIR="${BASE_DIR}/worker-agent/node"
 echo "[setup] Using worker node directory: ${WORKER_NODE_DIR}"
@@ -66,7 +67,7 @@ echo "[setup] Using worker node directory: ${WORKER_NODE_DIR}"
 mkdir -p "${WORKER_NODE_DIR}"
 cd "${WORKER_NODE_DIR}"
 
-### 5. Ensure package.json exists and is ES module #############################
+### 6. Ensure package.json exists and is ES module #############################
 
 if [[ ! -f "package.json" ]]; then
   echo "[setup] Creating minimal package.json..."
@@ -87,7 +88,7 @@ else
   echo "[setup] Please ensure it contains \"type\": \"module\" at the top level."
 fi
 
-### 6. Install node dependencies ##############################################
+### 7. Install node dependencies ##############################################
 
 echo "[setup] Running npm install..."
 npm install
@@ -96,7 +97,7 @@ npm install
 echo "[setup] Ensuring 'cors' dependency is installed..."
 npm install cors --save
 
-### 7. Create config/worker-default.yaml if missing ###########################
+### 8. Create config/worker-default.yaml if missing ###########################
 
 CONFIG_DIR="${WORKER_NODE_DIR}/config"
 CONFIG_FILE="${CONFIG_DIR}/worker-default.yaml"
@@ -117,12 +118,15 @@ else
   echo "[setup] ${CONFIG_FILE} already exists; not overwriting."
 fi
 
-### 8. Create systemd service for autostart ###################################
+### 9. Create / update systemd service for autostart ##########################
 
 SERVICE_NAME="processor-worker-${WORKER_ID}.service"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}"
 
-echo "[setup] Creating systemd service ${SERVICE_NAME}..."
+echo "[setup] Creating/updating systemd service ${SERVICE_NAME}..."
+
+# Stop existing service if it’s already there (ignore errors)
+sudo systemctl stop "${SERVICE_NAME}" 2>/dev/null || true
 
 SERVICE_CONTENT="[Unit]
 Description=ProcessorCluster Worker (${WORKER_ID})
@@ -153,7 +157,7 @@ sudo systemctl enable "${SERVICE_NAME}"
 echo "[setup] Starting service ${SERVICE_NAME} now..."
 sudo systemctl restart "${SERVICE_NAME}" || sudo systemctl start "${SERVICE_NAME}"
 
-### 9. Summary #################################################################
+### 10. Summary ################################################################
 
 echo
 echo "[setup] Worker setup complete."
