@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProcessorCluster Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="topbar">
+        <h1>ProcessorCluster: Dashboard</h1>
+        <div class="topbar-links">
+            <a class="navlink active" href="index.html">Workers</a>
+            <a class="navlink" href="cluster.html">Cluster</a>
+        </div>
+    </div>
+
+
+  <div class="controls">
+    <div class="controls-row">
+      <label>
+        IP Prefix
+        <input id="ipPrefix" type="text" placeholder="192.168.1." />
+      </label>
+
+      <label>
+        Start
+        <input id="ipStart" type="number" min="0" max="255" placeholder="1" />
+      </label>
+
+      <label>
+        End
+        <input id="ipEnd" type="number" min="0" max="255" placeholder="254" />
+      </label>
+
+      <label>
+        Probe Timeout (ms)
+        <input id="probeTimeout" type="number" min="50" step="50" placeholder="1000" />
+      </label>
+
+      <label>
+        Discovery Interval (ms)
+        <input id="discoveryInterval" type="number" min="200" step="100" placeholder="10000" />
+      </label>
+
+      <label>
+        Poll Interval (ms)
+        <input id="pollInterval" type="number" min="100" step="50" placeholder="500" />
+      </label>
+
+      <label>
+        Missed Poll Threshold
+        <input id="missedThreshold" type="number" min="1" step="1" value="3" />
+    </label>
+
+    </div>
+
+    <div class="controls-row">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn">Stop</button>
+      <button id="clearBtn">Clear Workers</button>
+
+      <div class="status-line">
+        Status: <span id="uiStatus">Idle</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="workers-container"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>

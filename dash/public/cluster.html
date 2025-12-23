@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProcessorCluster — Cluster</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="topbar">
+    <h1>ProcessorCluster: Cluster</h1>
+    <div class="topbar-links">
+      <a class="navlink" href="index.html">Workers</a>
+      <a class="navlink active" href="cluster.html">Cluster</a>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="controls-row" style="padding:8px;">
+      <label>
+        IP Prefix
+        <input id="ipPrefix" type="text" placeholder="192.168.1." />
+      </label>
+
+      <label>
+        Start
+        <input id="ipStart" type="number" min="0" max="255" placeholder="1" />
+      </label>
+
+      <label>
+        End
+        <input id="ipEnd" type="number" min="0" max="255" placeholder="254" />
+      </label>
+
+      <label>
+        Probe Timeout (ms)
+        <input id="probeTimeout" type="number" min="50" step="50" placeholder="1000" />
+      </label>
+
+      <label>
+        Discovery Interval (ms)
+        <input id="discoveryInterval" type="number" min="200" step="100" placeholder="10000" />
+      </label>
+
+      <label>
+        Poll Interval (ms)
+        <input id="pollInterval" type="number" min="100" step="50" placeholder="1000" />
+      </label>
+
+      <label>
+        Missed Poll Threshold
+        <input id="missedThreshold" type="number" min="1" step="1" placeholder="3" />
+      </label>
+    </div>
+
+    <div class="controls-row">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn">Stop</button>
+      <button id="clearBtn">Clear</button>
+
+      <div class="status-line">
+        Status: <span id="uiStatus">Idle</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="gauges-grid">
+    <div class="gauge-card">
+      <div class="gauge-title">Total Cores</div>
+      <div class="gauge-wrap" id="gauge-cores"></div>
+      <div class="gauge-sub" id="cores-sub">—</div>
+    </div>
+
+    <div class="gauge-card">
+      <div class="gauge-title">Total RAM</div>
+      <div class="gauge-wrap" id="gauge-ram"></div>
+      <div class="gauge-sub" id="ram-sub">—</div>
+    </div>
+  </div>
+
+  <script src="cluster.js"></script>
+</body>
+</html>

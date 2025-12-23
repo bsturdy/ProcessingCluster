@@ -26,7 +26,7 @@ const scheduler = new Scheduler(jobStore, {
 });
 scheduler.start();
 
-// 🔴 THIS WAS WRONG BEFORE – FIXED NOW 🔴
+
 // `registerRoutes` expects a deps object: { jobStore, config }
 registerRoutes(app, { jobStore, config });
 

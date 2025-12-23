@@ -1,0 +1,326 @@
+:root{
+  --bg: #0b1220;
+  --panel: rgba(255,255,255,0.06);
+  --panel2: rgba(255,255,255,0.08);
+  --text: #e8eefc;
+  --muted: rgba(232,238,252,0.72);
+  --border: rgba(255,255,255,0.10);
+  --shadow: 0 10px 30px rgba(0,0,0,0.35);
+  --radius: 16px;
+  --gap: 14px;
+  --accent: #7aa7ff;
+  --bad: #ff6b6b;
+  --good: #7dffb2;
+}
+
+*{ box-sizing: border-box; }
+html, body { height: auto; }
+body { min-height: 100vh; }
+
+body{
+  margin:0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  background: radial-gradient(1200px 800px at 10% 10%, rgba(122,167,255,0.18), transparent 60%),
+              radial-gradient(900px 700px at 80% 20%, rgba(125,255,178,0.10), transparent 60%),
+              var(--bg);
+  color: var(--text);
+}
+
+h1{
+  margin: 18px auto 10px auto;
+  width: min(1200px, calc(100% - 32px));
+  font-size: 34px;
+  letter-spacing: 0.2px;
+}
+
+.controls{
+  width: min(1200px, calc(100% - 32px));
+  margin: 0 auto 18px auto;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(10px);
+}
+
+.controls-row{
+  display: flex;
+  padding: 8px;
+  gap: var(--gap);
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.controls label{
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  min-width: 140px;
+}
+
+.controls input{
+  appearance: none;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.22);
+  color: var(--text);
+  padding: 10px 10px;
+  border-radius: 12px;
+  outline: none;
+  font-size: 14px;
+  min-width: 120px;
+}
+
+.controls input:focus{
+  border-color: rgba(122,167,255,0.55);
+  box-shadow: 0 0 0 3px rgba(122,167,255,0.15);
+}
+
+.controls button{
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.10);
+  color: var(--text);
+  padding: 10px 14px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.controls button:hover{
+  background: rgba(255,255,255,0.14);
+}
+
+.controls button:active{
+  transform: translateY(1px);
+}
+
+.status-line{
+  margin-left: auto;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.18);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+#uiStatus{ color: var(--text); }
+
+#workers-container{
+  width: min(1200px, calc(100% - 32px));
+  margin: 0 auto 26px auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--gap);
+}
+
+.worker-card{
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05));
+  box-shadow: var(--shadow);
+  padding: 14px 14px 12px 14px;
+}
+
+
+.worker-card.offline::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(255, 80, 80, 0.12);
+  pointer-events: none;
+}
+
+
+.worker-card.offline{
+  opacity: 0.72;
+  filter: saturate(0.7);
+}
+
+
+.worker-card.offline .worker-status{
+  color: var(--bad);
+}
+
+.worker-card h3{
+  margin: 0 0 10px 0;
+  font-size: 18px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.worker-card h3 span{
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: var(--accent);
+}
+
+.info-line{
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  margin: 6px 0;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.06);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.info-line span{
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+}
+
+/* Status colouring based on text content (simple) */
+.worker-status{
+  font-weight: 800;
+}
+
+.worker-card .worker-status:where(:not(:empty)){
+  color: var(--good);
+}
+
+/* If you set Offline text in JS, it will show red automatically */
+.worker-card .worker-status:is(:contains("Offline")){ color: var(--bad); } /* harmless if unsupported */
+
+/* Mobile */
+@media (max-width: 520px){
+  h1{ font-size: 28px; }
+  .status-line{ margin-left: 0; width: 100%; }
+  .controls label{ min-width: 100%; }
+  .controls input{ width: 100%; }
+}
+
+
+
+/* new page */
+
+.topbar{
+  width: min(1200px, calc(100% - 32px));
+  margin: 18px auto 10px auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.topbar h1{
+  margin: 0;
+  width: auto;
+}
+
+.topbar-links{
+  display: flex;
+  gap: 10px;
+}
+
+.navlink{
+  text-decoration: none;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.06);
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+
+.navlink.active{
+  color: var(--text);
+  background: rgba(122,167,255,0.14);
+  border-color: rgba(122,167,255,0.35);
+}
+
+.gauges-grid{
+  width: min(1200px, calc(100% - 32px));
+  margin: 0 auto 26px auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: var(--gap);
+}
+
+.gauge-card{
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.05));
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+.gauge-title{
+  font-size: 14px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.gauge-wrap{
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 220px;
+}
+
+.gauge{
+  position: relative;
+  width: 320px;
+  height: 220px;
+}
+
+.gauge-svg{
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.gauge-arc-bg{
+  fill: none;
+  stroke: rgba(255,255,255,0.10);
+  stroke-width: 18;
+  stroke-linecap: round;
+}
+
+.gauge-arc-fg{
+  fill: none;
+  stroke: rgba(122,167,255,0.50);
+  stroke-width: 18;
+  stroke-linecap: round;
+}
+
+.gauge-center{
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 95px;      
+  text-align: center;
+}
+
+.gauge-bottom{
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;      
+  text-align: center;
+}
+
+
+.gauge-main{
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+}
+
+.gauge-sub{
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gauge-sub + .gauge-sub{
+  margin-top: 2px;
+}
