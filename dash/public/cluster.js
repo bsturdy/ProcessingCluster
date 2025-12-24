@@ -7,7 +7,6 @@ const workerState = new Map(); // ip -> { missCount: number }
 const latestByIp = new Map();  // ip -> latest data object (online)
 const KNOWN_WORKERS_KEY = "pcdash.knownWorkerIPs";
 
-
 async function bootstrapKnownWorkersOnce(timeoutMs) {
   const ips = Array.from(knownWorkerIPs);
   if (ips.length === 0) return;
@@ -25,8 +24,6 @@ async function bootstrapKnownWorkersOnce(timeoutMs) {
   recomputeClusterTotals();
 }
 
-
-
 function loadKnownWorkerIPs() {
   try {
     const raw = localStorage.getItem(KNOWN_WORKERS_KEY);
@@ -38,12 +35,9 @@ function loadKnownWorkerIPs() {
   }
 }
 
-
-
 function saveKnownWorkerIPs() {
   localStorage.setItem(KNOWN_WORKERS_KEY, JSON.stringify(Array.from(knownWorkerIPs)));
 }
-
 
 function noteWorkerOk(ip) {
   workerState.set(ip, { missCount: 0 });
@@ -179,16 +173,12 @@ function describeArc(cx, cy, r, startAngle, endAngle) {
   ].join(" ");
 }
 
-
-
 function renderGauge(el, { label, value01, mainText, subText }) {
   const pct = Math.max(0, Math.min(1, value01));
   const start = -225;   // degrees
-  const sweep = 270;    // degrees (like your image)
+  const sweep = 270;    // degrees
   const end = start + sweep * pct;
 
-  // Build arc path using SVG, two arcs: background + progress
-  // We use a normalized viewBox and polar to cartesian conversion.
   const cx = 100, cy = 105, r = 90;
 
   const polar = (deg) => {
@@ -239,7 +229,7 @@ function recomputeClusterTotals() {
   const ramPct = totalRamMb > 0 ? (usedRamMb / totalRamMb) : 0;
 
   renderGauge(document.getElementById("gauge-cores"), {
-    label: "Cores Used",
+    label: "Threads Used",
     value01: coresPct,
     mainText: `${Math.round(coresPct * 100)}%`,
     subText: `${usedThreadsProxy} / ${totalThreads} (proxy)`
@@ -259,36 +249,7 @@ function recomputeClusterTotals() {
     `Online workers: ${online.length} • Total RAM: ${totalRamMb} MB`;
 }
 
-/* ---------- Control plane ---------- */
-
-function startPolling(intervalMs, timeoutMs, missedThreshold, runToken) {
-  async function poll() {
-    if (runToken !== activeRunToken) return;
-
-    const ips = Array.from(knownWorkerIPs);
-    if (ips.length === 0) return;
-
-    const results = await Promise.all(ips.map(ip => fetchWorkerData(ip, timeoutMs)));
-    if (runToken !== activeRunToken) return;
-
-    for (const r of results) {
-      if (r.error) {
-        const misses = noteWorkerMiss(r.ip);
-        if (misses >= missedThreshold) {
-          latestByIp.delete(r.ip); // treat as offline for totals
-        }
-      } else {
-        noteWorkerOk(r.ip);
-        latestByIp.set(r.ip, r);
-      }
-    }
-
-    recomputeClusterTotals();
-  }
-
-  poll();
-  return setInterval(poll, intervalMs);
-}
+/* ---------- Start/Stop ---------- */
 
 function startDashboard() {
   stopDashboard();
@@ -322,8 +283,8 @@ function startDashboard() {
     kickOffDiscovery(ipCandidates, settings.probeTimeoutMs, (ip, data) => {
       if (!knownWorkerIPs.has(ip)) {
         knownWorkerIPs.add(ip);
-        saveKnownWorkerIPs(); // <-- required persistence
-      }  
+        saveKnownWorkerIPs();
+      }
       latestByIp.set(ip, data);
       recomputeClusterTotals();
     }, runToken);
@@ -332,7 +293,28 @@ function startDashboard() {
   discoveryTick();
   discoveryTimer = setInterval(discoveryTick, settings.discoveryIntervalMs);
 
-  pollTimer = startPolling(settings.pollIntervalMs, settings.probeTimeoutMs, settings.missedThreshold, runToken);
+  pollTimer = setInterval(async () => {
+    if (runToken !== activeRunToken) return;
+
+    const ips = Array.from(knownWorkerIPs);
+    if (ips.length === 0) return;
+
+    const results = await Promise.all(ips.map(ip => fetchWorkerData(ip, settings.probeTimeoutMs)));
+    if (runToken !== activeRunToken) return;
+
+    for (const r of results) {
+      if (r.error) {
+        const misses = noteWorkerMiss(r.ip);
+        if (misses >= settings.missedThreshold) {
+          latestByIp.delete(r.ip);
+        }
+      } else {
+        noteWorkerOk(r.ip);
+        latestByIp.set(r.ip, r);
+      }
+    }
+    recomputeClusterTotals();
+  }, settings.pollIntervalMs);
 }
 
 function stopDashboard() {
@@ -345,13 +327,11 @@ function stopDashboard() {
   setUiStatus("Idle");
 }
 
-function clearAll() {
+function clearKnownWorkers() {
   knownWorkerIPs.clear();
-  workerState.clear();
   latestByIp.clear();
-  saveKnownWorkerIPs();
+  localStorage.setItem(KNOWN_WORKERS_KEY, JSON.stringify([]));
   recomputeClusterTotals();
-  setUiStatus("Idle (cleared)");
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -362,26 +342,19 @@ document.addEventListener("DOMContentLoaded", () => {
     ipEnd: 254,
     probeTimeoutMs: 1000,
     discoveryIntervalMs: 10000,
-    pollIntervalMs: 1000,
-    missedThreshold: 3
+    pollIntervalMs: 1000
   });
 
+  for (const ip of loadKnownWorkerIPs()) knownWorkerIPs.add(ip);
 
-  for (const ip of loadKnownWorkerIPs()) {
-    if (!knownWorkerIPs.has(ip)) {
-      knownWorkerIPs.add(ip);
-    }
-  }
-
-  const bootstrapTimeout = (saved?.probeTimeoutMs ?? 1000);
-  bootstrapKnownWorkersOnce(bootstrapTimeout);
-
-  // initial empty gauges
-  recomputeClusterTotals();
+  bootstrapKnownWorkersOnce(saved?.probeTimeoutMs ?? 1000);
 
   document.getElementById("startBtn").addEventListener("click", startDashboard);
   document.getElementById("stopBtn").addEventListener("click", stopDashboard);
-  document.getElementById("clearBtn").addEventListener("click", clearAll);
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    clearKnownWorkers();
+    setUiStatus("Idle (cleared)");
+  });
 
   startDashboard();
 });

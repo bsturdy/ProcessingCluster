@@ -1,6 +1,19 @@
 
 import os from "os";
 import process from "process";
+import fs from "fs";
+import path from "path";
+import { execSync } from "child_process";
+import { fileURLToPath } from "url";
+
+
+
+/**
+ * Resolve paths relative to this module (not process.cwd()) so systemd/pm2 CWD changes
+ * don't break anything.
+ */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 
 
@@ -145,25 +158,150 @@ export function buildInfo(config) {
   };
 }
 
+
+
+/**
+ * Linux: read MemAvailable from /proc/meminfo (best signal for "how much can we allocate").
+ * Fallback to os.freemem() on non-Linux or if parsing fails.
+ */
+function getMemoryAvailableMb() {
+  const platform = os.platform();
+
+  // Non-Linux fallback
+  if (platform !== "linux") {
+    return Math.round(os.freemem() / (1024 * 1024));
+  }
+
+  try {
+    const txt = fs.readFileSync("/proc/meminfo", "utf8");
+
+    // Prefer MemAvailable
+    const mAvail = txt.match(/^MemAvailable:\s+(\d+)\s+kB/m);
+    if (mAvail && mAvail[1]) {
+      const kb = Number(mAvail[1]);
+      if (Number.isFinite(kb) && kb >= 0) return Math.round(kb / 1024);
+    }
+
+    // Fallback approximation: MemFree + Buffers + Cached
+    const mFree = txt.match(/^MemFree:\s+(\d+)\s+kB/m);
+    const mBuf = txt.match(/^Buffers:\s+(\d+)\s+kB/m);
+    const mCache = txt.match(/^Cached:\s+(\d+)\s+kB/m);
+
+    const kb =
+      (mFree ? Number(mFree[1]) : 0) +
+      (mBuf ? Number(mBuf[1]) : 0) +
+      (mCache ? Number(mCache[1]) : 0);
+
+    if (Number.isFinite(kb) && kb >= 0) return Math.round(kb / 1024);
+  } catch {
+    // ignore
+  }
+
+  return Math.round(os.freemem() / (1024 * 1024));
+}
+
+
+
+/**
+ * Node >=18: fs.statfsSync exists on Linux.
+ * Returns { totalMb, availableMb } or null if unsupported.
+ */
+function statFsMb(targetPath) {
+  try {
+    if (typeof fs.statfsSync !== "function") return null;
+    const s = fs.statfsSync(targetPath);
+    // f_frsize is preferred; fall back to bsize if needed
+    const blockSize = Number(s.f_frsize || s.bsize);
+    const totalBytes = Number(s.blocks) * blockSize;
+    const availBytes = Number(s.bavail) * blockSize;
+
+    if (!Number.isFinite(totalBytes) || !Number.isFinite(availBytes)) return null;
+
+    return {
+      totalMb: Math.round(totalBytes / (1024 * 1024)),
+      availableMb: Math.round(availBytes / (1024 * 1024))
+    };
+  } catch {
+    return null;
+  }
+}
+
+
+
+/**
+ * Resolve the absolute jobs path.
+ * - Prefer env override (works with systemd)
+ * - Otherwise default to "<this module dir>/jobs" which matches your repo layout
+ */
+function resolveJobsPath() {
+  const envPath = process.env.WORKER_JOBS_DIR;
+  if (envPath && typeof envPath === "string") return path.resolve(envPath);
+  return path.resolve(__dirname, "jobs");
+}
+
+
+
 /**
  * Build the JSON response for GET /health.
  *
- * This should return dynamic information that can change over time:
- * - uptime
- * - load average
- * - how many jobs are running
- * - max concurrent jobs
- * - temperature (if available; null in v1)
+ * v2 additions:
+ * - health_protocol_version + timestamp_unix_ms
+ * - cpu_threads
+ * - dedicated reservation state (empty for now; filled later by reservation manager)
+ * - memory_total_mb + memory_available_mb
+ * - jobs_path + disk stats
+ * - docker_root_dir + disk stats
+ *
+ * Keeps all v1 fields unchanged for backwards compatibility with dashboards.
  */
-export function buildHealth({ runningJobs, maxConcurrentJobs }) {
+export function buildHealth({
+  runningJobs,
+  maxConcurrentJobs,
+  dedicatedReservedCpuIds = []
+} = {}) {
   const load = os.loadavg(); // [1min, 5min, 15min]
+  const cpuThreads = (os.cpus() || []).length;
+
+  const memoryTotalMb = Math.round(os.totalmem() / (1024 * 1024));
+  const memoryAvailableMb = getMemoryAvailableMb();
+
+  const jobsPath = resolveJobsPath();
+
+  // Allow override if you ever move Docker root; default matches your current workers.
+  const dockerRootDir = process.env.DOCKER_ROOT_DIR
+    ? path.resolve(process.env.DOCKER_ROOT_DIR)
+    : "/var/lib/docker";
+
+  const jobsDisk = statFsMb(jobsPath) || statFsMb(path.dirname(jobsPath));
+  const dockerDisk = statFsMb(dockerRootDir) || statFsMb(path.dirname(dockerRootDir));
 
   return {
-    status: "ok", // v1: always "ok" unless we add smarter checks
+    // v2 meta
+    health_protocol_version: 2,
+    timestamp_unix_ms: Date.now(),
+
+    // v1 fields (unchanged)
+    status: "ok",
     uptime_seconds: Math.round(process.uptime()),
     load_average: load,
     running_jobs: runningJobs,
     max_concurrent_jobs: maxConcurrentJobs,
-    temperature_c: null // placeholder; we can wire real sensors later
+    temperature_c: null,
+
+    // v2 resource fields
+    cpu_threads: cpuThreads,
+    dedicated_reserved_cpu_ids: Array.isArray(dedicatedReservedCpuIds) ? dedicatedReservedCpuIds : [],
+    dedicated_reserved_count: Array.isArray(dedicatedReservedCpuIds) ? dedicatedReservedCpuIds.length : 0,
+
+    memory_total_mb: memoryTotalMb,
+    memory_available_mb: memoryAvailableMb,
+
+    jobs_path: jobsPath,
+    jobs_disk_total_mb: jobsDisk ? jobsDisk.totalMb : null,
+    jobs_disk_available_mb: jobsDisk ? jobsDisk.availableMb : null,
+
+    docker_root_dir: dockerRootDir,
+    docker_disk_total_mb: dockerDisk ? dockerDisk.totalMb : null,
+    docker_disk_available_mb: dockerDisk ? dockerDisk.availableMb : null
   };
 }

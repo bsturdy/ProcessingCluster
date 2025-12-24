@@ -9,12 +9,9 @@ let discoveryTimer = null;
 let pollTimer = null;
 let activeRunToken = 0;
 
-
-
 const knownWorkerIPs = new Set();
 const workerState = new Map(); // ip -> { missCount: number }
 const KNOWN_WORKERS_KEY = "pcdash.knownWorkerIPs";
-
 
 async function bootstrapKnownWorkersOnce(timeoutMs) {
   const ips = Array.from(knownWorkerIPs);
@@ -31,7 +28,6 @@ async function bootstrapKnownWorkersOnce(timeoutMs) {
   }
 }
 
-
 function loadKnownWorkerIPs() {
   try {
     const raw = localStorage.getItem(KNOWN_WORKERS_KEY);
@@ -43,18 +39,13 @@ function loadKnownWorkerIPs() {
   }
 }
 
-
-
 function saveKnownWorkerIPs() {
   localStorage.setItem(KNOWN_WORKERS_KEY, JSON.stringify(Array.from(knownWorkerIPs)));
 }
 
-
-
 function noteWorkerOk(ip) {
   workerState.set(ip, { missCount: 0 });
 }
-
 
 function noteWorkerMiss(ip) {
   const s = workerState.get(ip) ?? { missCount: 0 };
@@ -62,7 +53,6 @@ function noteWorkerMiss(ip) {
   workerState.set(ip, s);
   return s.missCount;
 }
-
 
 function setUiStatus(text) {
   const el = document.getElementById("uiStatus");
@@ -137,7 +127,10 @@ async function fetchWorkerData(ipAddress, timeoutMs = 1000) {
       ip: ipAddress,
       workerId: info.worker_id,
       hostname: info.hostname,
+      os: info.os ?? null,
+      osArchitecture: info.os_architecture ?? null,
       protocolVersion: info.protocol_version,
+      cpuModel: info.cpu_model ?? null,
       cpuCores: info.cpu_cores,
       cpuThreads: info.cpu_threads,
       memoryMB: info.memory_mb,
@@ -154,7 +147,6 @@ async function fetchWorkerData(ipAddress, timeoutMs = 1000) {
     return { ip: ipAddress, error: true, message: err?.message ?? "unreachable" };
   }
 }
-
 
 /*
   Get JSON data with a timeout
@@ -187,7 +179,10 @@ async function probeWorkerOnce(ipAddress, timeoutMs = 1000) {
       ip: ipAddress,
       workerId: info.worker_id,
       hostname: info.hostname,
+      os: info.os ?? null,
+      osArchitecture: info.os_architecture ?? null,
       protocolVersion: info.protocol_version,
+      cpuModel: info.cpu_model ?? null,
       cpuCores: info.cpu_cores,
       cpuThreads: info.cpu_threads,
       memoryMB: info.memory_mb,
@@ -282,6 +277,9 @@ function updateWorkerCard(ip, data) {
     card.querySelector(".worker-load").textContent = "—";
     card.querySelector(".worker-temp").textContent = "—";
     card.querySelector(".worker-labels").textContent = "—";
+    card.querySelector(".worker-os").textContent = "—";
+    card.querySelector(".worker-arch").textContent = "—";
+    card.querySelector(".worker-cpu-model").textContent = "—";
     card.querySelector(".worker-running").textContent = "—";
     card.querySelector(".worker-max").textContent = "—";
     card.classList.add("offline");
@@ -292,9 +290,17 @@ function updateWorkerCard(ip, data) {
 
   card.querySelector(".worker-name").textContent = data.workerId;
   card.querySelector(".worker-hostname").textContent = data.hostname;
+  card.querySelector(".worker-os").textContent =
+    (data.os === null || data.os === undefined || data.os === "") ? "N/A" : data.os;
+  card.querySelector(".worker-arch").textContent =
+    (data.osArchitecture === null || data.osArchitecture === undefined || data.osArchitecture === "") ? "N/A" : data.osArchitecture;
   card.querySelector(".worker-protocol").textContent = data.protocolVersion;
 
-  card.querySelector(".worker-cpu").textContent = `${data.cpuCores} cores / ${data.cpuThreads} threads`;
+  card.querySelector(".worker-cpu-model").textContent =
+    (data.cpuModel === null || data.cpuModel === undefined || data.cpuModel === "") ? "N/A" : data.cpuModel;
+
+  const coresText = (data.cpuCores === null || data.cpuCores === undefined) ? "N/A" : String(data.cpuCores);
+  card.querySelector(".worker-cpu").textContent = `${coresText} cores / ${data.cpuThreads} threads`;
   card.querySelector(".worker-ram").textContent = `${data.memoryMB} MB`;
 
   card.querySelector(".worker-status").textContent = data.status;
@@ -332,8 +338,11 @@ function ensureWorkerCard(ip) {
     <h3>Worker: <span class="worker-name">${ip}</span></h3>
 
     <div class="info-line">Hostname: <span class="worker-hostname">loading...</span></div>
+    <div class="info-line">OS: <span class="worker-os">loading...</span></div>
+    <div class="info-line">OS Architecture: <span class="worker-arch">loading...</span></div>
     <div class="info-line">Protocol Version: <span class="worker-protocol">loading...</span></div>
 
+    <div class="info-line">CPU Model: <span class="worker-cpu-model">loading...</span></div>
     <div class="info-line">CPU: <span class="worker-cpu">loading...</span></div>
     <div class="info-line">RAM: <span class="worker-ram">loading...</span></div>
 
@@ -439,12 +448,11 @@ function startDashboard() {
   discoveryTimer = setInterval(discoveryTick, settings.discoveryIntervalMs);
 
   pollTimer = startDynamicWorkerPolling(
-  settings.pollIntervalMs,
-  settings.probeTimeoutMs,
-  settings.missedThreshold,
-  runToken
-);
-
+    settings.pollIntervalMs,
+    settings.probeTimeoutMs,
+    settings.missedThreshold,
+    runToken
+  );
 }
 
 function stopDashboard() {
@@ -481,7 +489,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const bootstrapTimeout = (saved?.probeTimeoutMs ?? 1000);
   bootstrapKnownWorkersOnce(bootstrapTimeout);
-
 
   document.getElementById("startBtn").addEventListener("click", startDashboard);
   document.getElementById("stopBtn").addEventListener("click", stopDashboard);

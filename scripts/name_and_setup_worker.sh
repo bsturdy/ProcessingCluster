@@ -124,6 +124,8 @@ calc_identities() {
   REPO_BASE="${HOME_DIR}/ProcessingCluster"
   WORKER_NODE_DIR="${REPO_BASE}/worker-agent/node"
   CFG_FILE="${WORKER_NODE_DIR}/config/worker-default.yaml"
+  JOBS_DIR="${WORKER_NODE_DIR}/jobs"
+
 }
 
 set_hostname_and_hosts() {
@@ -194,6 +196,10 @@ deploy_repo() {
   sudo -u "$USERNAME" bash -lc "cd '${WORKER_NODE_DIR}' && npm install"
   sudo -u "$USERNAME" bash -lc "cd '${WORKER_NODE_DIR}' && npm install cors --save"
 
+  echo "[jobs] Ensuring jobs dir: ${JOBS_DIR}"
+  sudo -u "$USERNAME" mkdir -p "$JOBS_DIR"
+  chown -R "${USERNAME}:${USERNAME}" "$JOBS_DIR"
+
   echo "[config] Writing ${CFG_FILE} (overwrite)"
   mkdir -p "$(dirname "$CFG_FILE")"
   cat > "$CFG_FILE" <<EOF
@@ -225,6 +231,7 @@ Requires=docker.service
 Type=simple
 User=${USERNAME}
 WorkingDirectory=${WORKER_NODE_DIR}
+Environment=WORKER_JOBS_DIR=${WORKER_NODE_DIR}/jobs
 ExecStart=/usr/bin/node src/index.js
 Restart=on-failure
 RestartSec=5
