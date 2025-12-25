@@ -132,7 +132,27 @@ async function fetchWorkerData(ipAddress, timeoutMs = 1000) {
       memoryMB: info.memory_mb,
       labels: info.labels,
       status: health.status,
-      runningJobs: health.running_jobs
+      runningJobs: health.running_jobs,
+
+      dedicatedReservedCount:
+        Number.isFinite(health.dedicated_reserved_count)
+          ? health.dedicated_reserved_count
+          : 0,
+
+      memoryTotalMb:
+        Number.isFinite(health.memory_total_mb)
+          ? health.memory_total_mb
+          : null,
+
+      memoryAvailableMb:
+        Number.isFinite(health.memory_available_mb)
+          ? health.memory_available_mb
+          : null,
+
+      healthCpuThreads:
+        Number.isFinite(health.cpu_threads)
+          ? health.cpu_threads
+          : null,
     };
   } catch (err) {
     return { ip: ipAddress, error: true, message: err?.message ?? "unreachable" };
@@ -217,22 +237,44 @@ function renderGauge(el, { label, value01, mainText, subText }) {
 function recomputeClusterTotals() {
   const online = Array.from(latestByIp.values());
 
-  const totalThreads = online.reduce((a, w) => a + (w.cpuThreads ?? 0), 0);
-  const usedThreadsProxy = online.reduce((a, w) => a + (w.runningJobs ?? 0), 0);
+  // Prefer healthCpuThreads if present, else cpuThreads
+  const totalThreads = online.reduce(
+    (a, w) => a + (w.healthCpuThreads ?? w.cpuThreads ?? 0),
+    0
+  );
 
-  const totalRamMb = online.reduce((a, w) => a + (w.memoryMB ?? 0), 0);
+  // Threads "used" = running jobs + dedicated reservations (both are real signals now)
+  const usedThreads = online.reduce((a, w) => {
+    const running = w.runningJobs ?? 0;
+    const reserved = w.dedicatedReservedCount ?? 0;
+    return a + running + reserved;
+  }, 0);
 
-  // NOTE: RAM used is not available in your current protocol.
-  const usedRamMb = 0;
+  // Prefer health v2 memory totals, else legacy info.memoryMB
+  const totalRamMb = online.reduce(
+    (a, w) => a + (w.memoryTotalMb ?? w.memoryMB ?? 0),
+    0
+  );
 
-  const coresPct = totalThreads > 0 ? (usedThreadsProxy / totalThreads) : 0;
+  const availRamMb = online.reduce(
+    (a, w) => a + (w.memoryAvailableMb ?? 0),
+    0
+  );
+
+  // RAM used = total - available (only valid when v2 fields exist)
+  const usedRamMb =
+    (totalRamMb > 0 && availRamMb > 0)
+      ? Math.max(0, totalRamMb - availRamMb)
+      : 0;
+
+  const coresPct = totalThreads > 0 ? (usedThreads / totalThreads) : 0;
   const ramPct = totalRamMb > 0 ? (usedRamMb / totalRamMb) : 0;
 
   renderGauge(document.getElementById("gauge-cores"), {
     label: "Threads Used",
     value01: coresPct,
     mainText: `${Math.round(coresPct * 100)}%`,
-    subText: `${usedThreadsProxy} / ${totalThreads} (proxy)`
+    subText: `${usedThreads} / ${totalThreads}`
   });
 
   renderGauge(document.getElementById("gauge-ram"), {
@@ -243,11 +285,12 @@ function recomputeClusterTotals() {
   });
 
   document.getElementById("cores-sub").textContent =
-    `Online workers: ${online.length} • Total threads: ${totalThreads} • Used (proxy): ${usedThreadsProxy}`;
+    `Online workers: ${online.length} • Total threads: ${totalThreads} • Used (running+reserved): ${usedThreads}`;
 
   document.getElementById("ram-sub").textContent =
-    `Online workers: ${online.length} • Total RAM: ${totalRamMb} MB`;
+    `Online workers: ${online.length} • Total RAM: ${totalRamMb} MB • Avail: ${availRamMb} MB`;
 }
+
 
 /* ---------- Start/Stop ---------- */
 

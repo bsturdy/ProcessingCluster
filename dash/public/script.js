@@ -123,8 +123,19 @@ async function fetchWorkerData(ipAddress, timeoutMs = 1000) {
       fetchJsonWithTimeout(`${base}/health`, timeoutMs)
     ]);
 
+    const dedicatedReservedCpuIds = Array.isArray(health.dedicated_reserved_cpu_ids)
+      ? health.dedicated_reserved_cpu_ids
+      : [];
+
+    const dedicatedReservedCount =
+      Number.isFinite(health.dedicated_reserved_count)
+        ? health.dedicated_reserved_count
+        : dedicatedReservedCpuIds.length;
+
     return {
       ip: ipAddress,
+
+      // /info
       workerId: info.worker_id,
       hostname: info.hostname,
       os: info.os ?? null,
@@ -136,12 +147,26 @@ async function fetchWorkerData(ipAddress, timeoutMs = 1000) {
       memoryMB: info.memory_mb,
       labels: info.labels,
 
+      // /health v1
       status: health.status,
       uptimeSeconds: health.uptime_seconds,
       loadAverage: health.load_average,
       runningJobs: health.running_jobs,
       maxConcurrentJobs: health.max_concurrent_jobs,
-      temperatureC: health.temperature_c
+      temperatureC: health.temperature_c,
+
+      // /health v2
+      healthCpuThreads: Number.isFinite(health.cpu_threads) ? health.cpu_threads : null,
+      dedicatedReservedCpuIds,
+      dedicatedReservedCount,
+      memoryTotalMb: Number.isFinite(health.memory_total_mb) ? health.memory_total_mb : null,
+      memoryAvailableMb: Number.isFinite(health.memory_available_mb) ? health.memory_available_mb : null,
+      jobsPath: health.jobs_path ?? null,
+      jobsDiskTotalMb: Number.isFinite(health.jobs_disk_total_mb) ? health.jobs_disk_total_mb : null,
+      jobsDiskAvailableMb: Number.isFinite(health.jobs_disk_available_mb) ? health.jobs_disk_available_mb : null,
+      dockerRootDir: health.docker_root_dir ?? null,
+      dockerDiskTotalMb: Number.isFinite(health.docker_disk_total_mb) ? health.docker_disk_total_mb : null,
+      dockerDiskAvailableMb: Number.isFinite(health.docker_disk_available_mb) ? health.docker_disk_available_mb : null
     };
   } catch (err) {
     return { ip: ipAddress, error: true, message: err?.message ?? "unreachable" };
@@ -170,35 +195,10 @@ async function fetchJsonWithTimeout(url, timeoutMs = 1000) {
   Probe a worker device once, returning its data or null if unreachable
 */
 async function probeWorkerOnce(ipAddress, timeoutMs = 1000) {
-  try {
-    const base = `http://${ipAddress}:9000`;
-    const info = await fetchJsonWithTimeout(`${base}/info`, timeoutMs);
-    const health = await fetchJsonWithTimeout(`${base}/health`, timeoutMs);
-
-    return {
-      ip: ipAddress,
-      workerId: info.worker_id,
-      hostname: info.hostname,
-      os: info.os ?? null,
-      osArchitecture: info.os_architecture ?? null,
-      protocolVersion: info.protocol_version,
-      cpuModel: info.cpu_model ?? null,
-      cpuCores: info.cpu_cores,
-      cpuThreads: info.cpu_threads,
-      memoryMB: info.memory_mb,
-      labels: info.labels,
-
-      status: health.status,
-      uptimeSeconds: health.uptime_seconds,
-      loadAverage: health.load_average,
-      runningJobs: health.running_jobs,
-      maxConcurrentJobs: health.max_concurrent_jobs,
-      temperatureC: health.temperature_c
-    };
-  } catch {
-    return null;
-  }
+  const d = await fetchWorkerData(ipAddress, timeoutMs);
+  return d.error ? null : d;
 }
+
 
 /*
   Create an array of IP addresses from a given prefix
@@ -282,6 +282,11 @@ function updateWorkerCard(ip, data) {
     card.querySelector(".worker-cpu-model").textContent = "—";
     card.querySelector(".worker-running").textContent = "—";
     card.querySelector(".worker-max").textContent = "—";
+    card.querySelector(".worker-health-proto").textContent = "—";
+    card.querySelector(".worker-reserved").textContent = "—";
+    card.querySelector(".worker-mem").textContent = "—";
+    card.querySelector(".worker-jobs-disk").textContent = "—";
+    card.querySelector(".worker-docker-disk").textContent = "—";
     card.classList.add("offline");
     return;
   }
@@ -300,12 +305,54 @@ function updateWorkerCard(ip, data) {
     (data.cpuModel === null || data.cpuModel === undefined || data.cpuModel === "") ? "N/A" : data.cpuModel;
 
   const coresText = (data.cpuCores === null || data.cpuCores === undefined) ? "N/A" : String(data.cpuCores);
-  card.querySelector(".worker-cpu").textContent = `${coresText} cores / ${data.cpuThreads} threads`;
+  
+  const shownThreads =
+  Number.isFinite(data.healthCpuThreads) ? data.healthCpuThreads : data.cpuThreads;
+
+  card.querySelector(".worker-cpu").textContent =
+    `${coresText} cores / ${shownThreads} threads`;
+
+
   card.querySelector(".worker-ram").textContent = `${data.memoryMB} MB`;
 
   card.querySelector(".worker-status").textContent = data.status;
   card.querySelector(".worker-running").textContent = data.runningJobs;
   card.querySelector(".worker-max").textContent = data.maxConcurrentJobs;
+
+  // Health protocol
+  card.querySelector(".worker-health-proto").textContent =
+    data.healthProtocolVersion ?? "N/A";
+
+  // Reserved CPUs
+  const threadsForReservation =
+    Number.isFinite(data.healthCpuThreads) ? data.healthCpuThreads : data.cpuThreads;
+
+  card.querySelector(".worker-reserved").textContent =
+    `${data.dedicatedReservedCount ?? 0} / ${threadsForReservation ?? "?"}`;
+
+  // Memory (MB only)
+  if (Number.isFinite(data.memoryTotalMb) && Number.isFinite(data.memoryAvailableMb)) {
+    const usedMb = data.memoryTotalMb - data.memoryAvailableMb;
+    card.querySelector(".worker-mem").textContent =
+      `${usedMb} MB used / ${data.memoryTotalMb} MB total (avail ${data.memoryAvailableMb} MB)`;
+  } else if (Number.isFinite(data.memoryMB)) {
+    card.querySelector(".worker-mem").textContent =
+      `${data.memoryMB} MB total (no v2 available)`;
+  } else {
+    card.querySelector(".worker-mem").textContent = "N/A";
+  }
+
+  // Disk (MB only)
+  card.querySelector(".worker-jobs-disk").textContent =
+    Number.isFinite(data.jobsDiskAvailableMb)
+      ? `${data.jobsDiskAvailableMb} MB free`
+      : "N/A";
+
+  card.querySelector(".worker-docker-disk").textContent =
+    Number.isFinite(data.dockerDiskAvailableMb)
+      ? `${data.dockerDiskAvailableMb} MB free`
+      : "N/A";
+
 
   card.querySelector(".worker-uptime").textContent = formatUptime(data.uptimeSeconds);
   card.querySelector(".worker-load").textContent = formatLoad(data.loadAverage);
@@ -349,6 +396,13 @@ function ensureWorkerCard(ip) {
     <div class="info-line">Status: <span class="worker-status">loading...</span></div>
     <div class="info-line">Running Jobs: <span class="worker-running">loading...</span></div>
     <div class="info-line">Max Concurrent Jobs: <span class="worker-max">loading...</span></div>
+
+    <div class="info-line">Health Protocol: <span class="worker-health-proto">loading...</span></div>
+    <div class="info-line">Reserved CPUs: <span class="worker-reserved">loading...</span></div>
+    <div class="info-line">Memory: <span class="worker-mem">loading...</span></div>
+    <div class="info-line">Jobs Disk Free: <span class="worker-jobs-disk">loading...</span></div>
+    <div class="info-line">Docker Disk Free: <span class="worker-docker-disk">loading...</span></div>
+
 
     <div class="info-line">Uptime: <span class="worker-uptime">loading...</span></div>
     <div class="info-line">Load Avg (1/5/15): <span class="worker-load">loading...</span></div>

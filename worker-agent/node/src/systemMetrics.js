@@ -267,7 +267,6 @@ export function buildHealth({
 
   const jobsPath = resolveJobsPath();
 
-  // Allow override if you ever move Docker root; default matches your current workers.
   const dockerRootDir = process.env.DOCKER_ROOT_DIR
     ? path.resolve(process.env.DOCKER_ROOT_DIR)
     : "/var/lib/docker";
